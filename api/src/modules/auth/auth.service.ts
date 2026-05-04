@@ -133,6 +133,17 @@ export class AuthService {
     };
   }
 
+  async logout(rawRefreshToken: string | null | undefined) {
+    if (!rawRefreshToken) return;
+
+    const tokenHash = hashToken(rawRefreshToken);
+
+    await this.app.prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async verifyEmail(rawToken: string) {
     const tokenHash = hashToken(rawToken);
 

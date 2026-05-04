@@ -2,23 +2,22 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
-const ACCESS_TOKEN_KEY = 'auth.accessToken';
-const REFRESH_TOKEN_KEY = 'auth.refreshToken';
+/**
+ * Access token lives in memory only — never localStorage. The refresh token
+ * is held by the API as an HttpOnly cookie at /api/auth, so JS can't see it.
+ * On a hard reload, the SPA must call /refresh to mint a new access token.
+ */
+let accessTokenInMemory: string | null = null;
 
 export const tokenStore = {
   get access(): string | null {
-    return localStorage.getItem(ACCESS_TOKEN_KEY);
+    return accessTokenInMemory;
   },
-  get refresh(): string | null {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
-  set(access: string, refresh: string): void {
-    localStorage.setItem(ACCESS_TOKEN_KEY, access);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+  set(token: string | null): void {
+    accessTokenInMemory = token;
   },
   clear(): void {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    accessTokenInMemory = null;
   },
 };
 
@@ -37,22 +36,24 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
-let refreshing: Promise<string> | null = null;
+let refreshing: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string> {
+export async function refreshAccessToken(): Promise<string | null> {
   if (refreshing) return refreshing;
 
-  const refresh = tokenStore.refresh;
-  if (!refresh) throw new Error('NO_REFRESH_TOKEN');
-
   refreshing = axios
-    .post<{ accessToken: string; refreshToken: string }>(
+    .post<{ accessToken: string }>(
       `${API_URL}/api/auth/refresh`,
-      { refreshToken: refresh },
+      undefined,
+      { withCredentials: true },
     )
     .then(({ data }) => {
-      tokenStore.set(data.accessToken, data.refreshToken);
+      tokenStore.set(data.accessToken);
       return data.accessToken;
+    })
+    .catch(() => {
+      tokenStore.clear();
+      return null;
     })
     .finally(() => {
       refreshing = null;
@@ -71,15 +72,14 @@ api.interceptors.response.use(
       original &&
       !original._retry &&
       !original.url?.endsWith('/api/auth/refresh') &&
-      !original.url?.endsWith('/api/auth/login')
+      !original.url?.endsWith('/api/auth/login') &&
+      !original.url?.endsWith('/api/auth/logout')
     ) {
       original._retry = true;
-      try {
-        const newToken = await refreshAccessToken();
+      const newToken = await refreshAccessToken();
+      if (newToken) {
         original.headers.set('Authorization', `Bearer ${newToken}`);
         return api.request(original);
-      } catch {
-        tokenStore.clear();
       }
     }
 
@@ -101,11 +101,10 @@ export const authApi = {
 
   login: (input: { email: string; password: string }) =>
     api
-      .post<{ accessToken: string; refreshToken: string; user: AuthUser }>(
-        '/api/auth/login',
-        input,
-      )
+      .post<{ accessToken: string; user: AuthUser }>('/api/auth/login', input)
       .then((r) => r.data),
+
+  logout: () => api.post('/api/auth/logout').then(() => undefined),
 
   forgotPassword: (email: string) =>
     api.post<{ message: string }>('/api/auth/forgot-password', { email }).then((r) => r.data),

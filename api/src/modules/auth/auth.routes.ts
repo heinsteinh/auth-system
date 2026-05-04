@@ -1,10 +1,9 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, type FastifyReply } from 'fastify';
 import { env } from '../../config/env.js';
 import { AuthService } from './auth.service.js';
 import {
   forgotPasswordSchema,
   loginSchema,
-  refreshSchema,
   registerSchema,
   resetPasswordSchema,
 } from './auth.schemas.js';
@@ -13,6 +12,28 @@ const loginRouteOptions =
   env.NODE_ENV === 'test'
     ? {}
     : { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
+
+const REFRESH_COOKIE = 'refreshToken';
+
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/api/auth',
+  maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
+};
+
+function setRefreshCookie(reply: FastifyReply, token: string) {
+  reply.setCookie(REFRESH_COOKIE, token, refreshCookieOptions);
+}
+
+function clearRefreshCookie(reply: FastifyReply) {
+  reply.clearCookie(REFRESH_COOKIE, {
+    path: refreshCookieOptions.path,
+    sameSite: refreshCookieOptions.sameSite,
+    secure: refreshCookieOptions.secure,
+  });
+}
 
 export async function authRoutes(app: FastifyInstance) {
   const authService = new AuthService(app);
@@ -35,32 +56,41 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  app.post(
-    '/login',
-    loginRouteOptions,
-    async (request, reply) => {
-      const body = loginSchema.parse(request.body);
-
-      try {
-        const result = await authService.login(body);
-        return reply.send(result);
-      } catch {
-        return reply.code(401).send({
-          message: 'Invalid credentials or email not verified',
-        });
-      }
-    },
-  );
-
-  app.post('/refresh', async (request, reply) => {
-    const body = refreshSchema.parse(request.body);
+  app.post('/login', loginRouteOptions, async (request, reply) => {
+    const body = loginSchema.parse(request.body);
 
     try {
-      const result = await authService.refresh(body.refreshToken);
-      return reply.send(result);
+      const { accessToken, refreshToken, user } = await authService.login(body);
+      setRefreshCookie(reply, refreshToken);
+      return reply.send({ accessToken, user });
     } catch {
+      return reply.code(401).send({
+        message: 'Invalid credentials or email not verified',
+      });
+    }
+  });
+
+  app.post('/refresh', async (request, reply) => {
+    const cookieToken = request.cookies[REFRESH_COOKIE];
+
+    if (!cookieToken) {
+      return reply.code(401).send({ message: 'Missing refresh token' });
+    }
+
+    try {
+      const { accessToken, refreshToken } = await authService.refresh(cookieToken);
+      setRefreshCookie(reply, refreshToken);
+      return reply.send({ accessToken });
+    } catch {
+      clearRefreshCookie(reply);
       return reply.code(401).send({ message: 'Invalid refresh token' });
     }
+  });
+
+  app.post('/logout', async (request, reply) => {
+    await authService.logout(request.cookies[REFRESH_COOKIE]);
+    clearRefreshCookie(reply);
+    return reply.code(204).send();
   });
 
   app.get('/verify-email', async (request, reply) => {

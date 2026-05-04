@@ -7,14 +7,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { authApi, tokenStore, type AuthUser } from './api';
+import { authApi, refreshAccessToken, tokenStore, type AuthUser } from './api';
 
 type AuthState = {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   register: (input: { email: string; password: string; name?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 };
 
@@ -41,7 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await refreshMe();
+      // On a fresh page load there's no access token in memory. Try the refresh
+      // cookie — if it's valid we get a new access token and can fetch /me.
+      const token = await refreshAccessToken();
+      if (!cancelled && token) {
+        await refreshMe();
+      }
       if (!cancelled) setLoading(false);
     })();
     return () => {
@@ -51,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback<AuthState['login']>(async (email, password) => {
     const result = await authApi.login({ email, password });
-    tokenStore.set(result.accessToken, result.refreshToken);
+    tokenStore.set(result.accessToken);
     setUser(result.user);
     return result.user;
   }, []);
@@ -60,7 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.register(input);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback<AuthState['logout']>(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // logout is idempotent server-side; clear local state regardless
+    }
     tokenStore.clear();
     setUser(null);
   }, []);

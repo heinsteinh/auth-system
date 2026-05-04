@@ -21,38 +21,44 @@ beforeEach(async () => {
   mailerStub.reset();
 });
 
-async function loginUser(email: string, password: string) {
+async function loginAndGetCookie(email: string, password: string): Promise<string> {
   const response = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
     payload: { email, password },
   });
-  return response.json() as { accessToken: string; refreshToken: string };
+  const cookie = response.cookies.find((c) => c.name === 'refreshToken');
+  if (!cookie) throw new Error('login did not return a refreshToken cookie');
+  return cookie.value;
 }
 
 describe('POST /api/auth/refresh', () => {
   const url = '/api/auth/refresh';
 
-  it('issues new access + refresh tokens and revokes the old refresh token', async () => {
+  it('issues a new access token + rotated cookie and revokes the old one', async () => {
     const { user, password } = await createUser({
       email: 'refresh@example.com',
       isEmailVerified: true,
     });
 
-    const initial = await loginUser(user.email, password);
+    const initialCookie = await loginAndGetCookie(user.email, password);
 
     const response = await app.inject({
       method: 'POST',
       url,
-      payload: { refreshToken: initial.refreshToken },
+      cookies: { refreshToken: initialCookie },
     });
 
     expect(response.statusCode).toBe(200);
 
     const body = response.json();
     expect(body.accessToken).toEqual(expect.any(String));
-    expect(body.refreshToken).toEqual(expect.any(String));
-    expect(body.refreshToken).not.toBe(initial.refreshToken);
+    expect(body.refreshToken).toBeUndefined();
+
+    const newCookie = response.cookies.find((c) => c.name === 'refreshToken');
+    expect(newCookie).toBeDefined();
+    expect(newCookie!.value).not.toBe(initialCookie);
+    expect(newCookie!.httpOnly).toBe(true);
 
     const tokens = await getPrisma().refreshToken.findMany({ where: { userId: user.id } });
     expect(tokens).toHaveLength(2);
@@ -60,36 +66,46 @@ describe('POST /api/auth/refresh', () => {
     expect(revoked).toHaveLength(1);
   });
 
-  it('rejects re-use of an already-rotated refresh token with 401', async () => {
+  it('rejects re-use of an already-rotated refresh cookie with 401', async () => {
     const { user, password } = await createUser({
       email: 'reuse@example.com',
       isEmailVerified: true,
     });
 
-    const initial = await loginUser(user.email, password);
+    const initialCookie = await loginAndGetCookie(user.email, password);
 
     const first = await app.inject({
       method: 'POST',
       url,
-      payload: { refreshToken: initial.refreshToken },
+      cookies: { refreshToken: initialCookie },
     });
     expect(first.statusCode).toBe(200);
 
     const second = await app.inject({
       method: 'POST',
       url,
-      payload: { refreshToken: initial.refreshToken },
+      cookies: { refreshToken: initialCookie },
     });
     expect(second.statusCode).toBe(401);
   });
 
-  it('rejects an unknown refresh token with 401', async () => {
+  it('returns 401 when no refresh cookie is sent', async () => {
+    const response = await app.inject({ method: 'POST', url });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ message: 'Missing refresh token' });
+  });
+
+  it('rejects an unknown refresh cookie with 401 and clears the cookie', async () => {
     const response = await app.inject({
       method: 'POST',
       url,
-      payload: { refreshToken: 'definitely-not-a-real-token' },
+      cookies: { refreshToken: 'definitely-not-a-real-token' },
     });
 
     expect(response.statusCode).toBe(401);
+
+    const cleared = response.cookies.find((c) => c.name === 'refreshToken');
+    expect(cleared).toBeDefined();
+    expect(cleared!.value).toBe('');
   });
 });

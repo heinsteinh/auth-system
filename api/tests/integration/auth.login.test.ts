@@ -24,7 +24,7 @@ beforeEach(async () => {
 describe('POST /api/auth/login', () => {
   const url = '/api/auth/login';
 
-  it('returns access + refresh tokens for a verified user with correct credentials', async () => {
+  it('returns access token + sets HttpOnly refresh cookie for a verified user', async () => {
     const { user, password } = await createUser({
       email: 'login@example.com',
       isEmailVerified: true,
@@ -40,16 +40,23 @@ describe('POST /api/auth/login', () => {
 
     const body = response.json();
     expect(body.accessToken).toEqual(expect.any(String));
-    expect(body.refreshToken).toEqual(expect.any(String));
+    expect(body.refreshToken).toBeUndefined();
     expect(body.user).toMatchObject({
       id: user.id,
       email: user.email,
       role: 'USER',
     });
 
+    const cookie = response.cookies.find((c) => c.name === 'refreshToken');
+    expect(cookie).toBeDefined();
+    expect(cookie!.value).toEqual(expect.any(String));
+    expect(cookie!.httpOnly).toBe(true);
+    expect(cookie!.sameSite).toBe('Lax');
+    expect(cookie!.path).toBe('/api/auth');
+
     const stored = await getPrisma().refreshToken.findMany({ where: { userId: user.id } });
     expect(stored).toHaveLength(1);
-    expect(stored[0].tokenHash).not.toBe(body.refreshToken); // stored hashed, not raw
+    expect(stored[0].tokenHash).not.toBe(cookie!.value); // stored hashed, not raw
   });
 
   it('rejects an unverified user with 401', async () => {

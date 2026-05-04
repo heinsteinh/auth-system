@@ -6,7 +6,7 @@ A learning project for building a **production-grade authentication system** end
 
 This repo is a sandbox for picking up production patterns one at a time. Concretely:
 
-- **Auth fundamentals** — bcrypt password hashing, JWT access tokens + opaque refresh tokens stored hashed, refresh-token rotation/revocation, role-based access control (`USER` / `ADMIN`).
+- **Auth fundamentals** — bcrypt password hashing, JWT access tokens (in-memory on the client), opaque refresh tokens stored hashed in the DB and held by the browser as an `HttpOnly; SameSite=Lax; Path=/api/auth` cookie, refresh-token rotation/revocation, role-based access control (`USER` / `ADMIN`).
 - **Email-driven flows** — email verification on signup, password reset with single-use tokens, all delivered via SMTP (MailHog locally).
 - **Schema-first data modeling** — Prisma 7 with the new `prisma-client` generator and a Postgres driver adapter (`@prisma/adapter-pg`), versioned migrations, enums in the schema (not ad-hoc strings).
 - **Hardening basics** — rate limiting on auth endpoints, env validation with Zod (fail fast at boot), CORS scoped to a known frontend origin, cookies with sane defaults.

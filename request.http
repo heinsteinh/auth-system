@@ -47,6 +47,9 @@ GET {{host}}/api/auth/verify-email?token={{verifyToken}}
 # 4. Login
 # -------------------------------------------------------------------
 ### Login (rate limited: 5 / minute)
+# Login sets an HttpOnly `refreshToken` cookie at Path=/api/auth.
+# REST Client follows Set-Cookie automatically, so subsequent requests
+# in this file send the cookie back for you.
 # @name login
 POST {{host}}/api/auth/login
 Content-Type: application/json
@@ -57,9 +60,8 @@ Content-Type: application/json
 }
 
 ###
-# Capture tokens from the login response above
+# Capture access token from the login response (refresh is in the cookie)
 @accessToken = {{login.response.body.accessToken}}
-@refreshToken = {{login.response.body.refreshToken}}
 
 
 # -------------------------------------------------------------------
@@ -73,23 +75,27 @@ Authorization: Bearer {{accessToken}}
 # -------------------------------------------------------------------
 # 6. Refresh access token
 # -------------------------------------------------------------------
-### Rotate the access token using the refresh token
+### Rotate the access token (refresh cookie sent automatically; no body needed)
 # @name refresh
 POST {{host}}/api/auth/refresh
-Content-Type: application/json
-
-{
-  "refreshToken": "{{refreshToken}}"
-}
 
 ###
-# After refresh, the old refresh token is revoked. Use the new pair:
+# Capture the rotated access token. The refresh cookie has been replaced.
 @accessToken2 = {{refresh.response.body.accessToken}}
-@refreshToken2 = {{refresh.response.body.refreshToken}}
 
 ### Sanity check — call /me with the rotated access token
 GET {{host}}/api/users/me
 Authorization: Bearer {{accessToken2}}
+
+
+# -------------------------------------------------------------------
+# 6b. Logout
+# -------------------------------------------------------------------
+### Clears the refresh cookie + revokes the server-side token (204)
+POST {{host}}/api/auth/logout
+
+### Refresh after logout should now fail with 401
+POST {{host}}/api/auth/refresh
 
 
 # -------------------------------------------------------------------
