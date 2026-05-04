@@ -1,24 +1,6 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { authApi, refreshAccessToken, tokenStore, type AuthUser } from './api';
-
-type AuthState = {
-  user: AuthUser | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
-  register: (input: { email: string; password: string; name?: string }) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshMe: () => Promise<void>;
-};
-
-const AuthContext = createContext<AuthState | null>(null);
+import { AuthContext, type AuthState } from './authContext';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -41,8 +23,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // On a fresh page load there's no access token in memory. Try the refresh
-      // cookie — if it's valid we get a new access token and can fetch /me.
       const token = await refreshAccessToken();
       if (!cancelled && token) {
         await refreshMe();
@@ -81,12 +61,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used inside <AuthProvider>');
-  }
-  return ctx;
 }

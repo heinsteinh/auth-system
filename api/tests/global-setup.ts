@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -7,16 +8,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, '../.env.test');
 
 export async function setup() {
-  const result = dotenv.config({ path: envPath, override: true });
-
-  if (result.error) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: true });
+  } else if (!process.env.DATABASE_URL) {
     throw new Error(
-      `Could not load ${envPath}. Create it from the README's "Testing" section before running the suite.`,
+      `No .env.test found at ${envPath} and DATABASE_URL is not set externally. ` +
+        'Create one for local dev, or pass env vars from your CI workflow.',
     );
   }
 
   if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL missing from .env.test');
+    throw new Error('DATABASE_URL is not set');
   }
 
   // eslint-disable-next-line no-console

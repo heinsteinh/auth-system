@@ -1,15 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
-import { useAuth } from '../auth/AuthProvider';
-import {
-  AuthCard,
-  Field,
-  FormError,
-  FormSuccess,
-  SubmitButton,
-  getApiErrorMessage,
-} from './shared';
+import { useAuth } from '../auth/useAuth';
+import { AuthCard, Field, FormError, FormSuccess, SubmitButton } from './shared';
+import { getApiErrorMessage } from './apiError';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),

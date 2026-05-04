@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { authApi, type AuthUser } from '../auth/api';
-import { useAuth } from '../auth/AuthProvider';
-import { FormError, getApiErrorMessage } from './shared';
+import { useAuth } from '../auth/useAuth';
+import { FormError } from './shared';
+import { getApiErrorMessage } from './apiError';
 
 export function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -10,17 +11,19 @@ export function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function load() {
-    setError(null);
-    try {
-      setUsers(await authApi.listUsers());
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Could not load users'));
-    }
-  }
-
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await authApi.listUsers();
+        if (!cancelled) setUsers(data);
+      } catch (err) {
+        if (!cancelled) setError(getApiErrorMessage(err, 'Could not load users'));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function onDelete(id: string) {
