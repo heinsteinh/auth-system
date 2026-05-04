@@ -1,6 +1,7 @@
 # auth-system
 
 [![CI](https://github.com/heinsteinh/auth-system/actions/workflows/ci.yml/badge.svg)](https://github.com/heinsteinh/auth-system/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)](https://github.com/heinsteinh/auth-system/actions/workflows/ci.yml)
 
 A learning project for building a **production-grade authentication system** end-to-end. The goal isn't just "make login work" — it's to practice the boring, important things that real services need: secure token handling, schema migrations, observability, rate limiting, email flows, and a sensible deployment story.
 
