@@ -118,5 +118,132 @@ describe('admin user management', () => {
 
       expect(response.statusCode).toBe(403);
     });
+
+    it('returns 400 when an admin tries to delete themselves', async () => {
+      const { user: admin, password } = await createAdmin({
+        email: 'self-del@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(admin.email, password);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/users/admin/users/${admin.id}`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const stillThere = await getPrisma().user.findUnique({ where: { id: admin.id } });
+      expect(stillThere).not.toBeNull();
+    });
+  });
+
+  describe('PATCH /api/users/admin/users/:id', () => {
+    it('promotes a USER to ADMIN', async () => {
+      const { user: admin, password: adminPw } = await createAdmin({
+        email: 'admin3@example.com',
+        isEmailVerified: true,
+      });
+      const { user: target } = await createUser({
+        email: 'promote-me@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(admin.email, adminPw);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/admin/users/${target.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'ADMIN' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ id: target.id, role: 'ADMIN' });
+
+      const updated = await getPrisma().user.findUnique({ where: { id: target.id } });
+      expect(updated?.role).toBe('ADMIN');
+    });
+
+    it('demotes an ADMIN to USER', async () => {
+      const { user: admin, password: adminPw } = await createAdmin({
+        email: 'admin4@example.com',
+        isEmailVerified: true,
+      });
+      const { user: target } = await createAdmin({
+        email: 'demote-me@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(admin.email, adminPw);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/admin/users/${target.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'USER' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ role: 'USER' });
+    });
+
+    it('returns 400 when an admin tries to change their own role', async () => {
+      const { user: admin, password } = await createAdmin({
+        email: 'self-role@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(admin.email, password);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/admin/users/${admin.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'USER' },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('returns 403 for a USER token', async () => {
+      const { user, password } = await createUser({
+        email: 'no-power@example.com',
+        isEmailVerified: true,
+      });
+      const { user: target } = await createUser({
+        email: 'wannabe@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(user.email, password);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/admin/users/${target.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'ADMIN' },
+      });
+
+      expect(response.statusCode).toBe(403);
+    });
+
+    it('returns 400 when the role value is invalid (Zod handler)', async () => {
+      const { user: admin, password } = await createAdmin({
+        email: 'admin5@example.com',
+        isEmailVerified: true,
+      });
+      const { user: target } = await createUser({
+        email: 'badrole@example.com',
+        isEmailVerified: true,
+      });
+      const token = await tokenFor(admin.email, password);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/users/admin/users/${target.id}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { role: 'SUPERUSER' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toBe('Validation failed');
+    });
   });
 });

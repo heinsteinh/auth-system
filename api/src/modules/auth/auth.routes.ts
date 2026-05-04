@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { env } from '../../config/env.js';
 import { AuthService } from './auth.service.js';
 import {
   forgotPasswordSchema,
@@ -7,6 +8,11 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from './auth.schemas.js';
+
+const loginRouteOptions =
+  env.NODE_ENV === 'test'
+    ? {}
+    : { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
 
 export async function authRoutes(app: FastifyInstance) {
   const authService = new AuthService(app);
@@ -31,14 +37,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post(
     '/login',
-    {
-      config: {
-        rateLimit: {
-          max: 5,
-          timeWindow: '1 minute',
-        },
-      },
-    },
+    loginRouteOptions,
     async (request, reply) => {
       const body = loginSchema.parse(request.body);
 

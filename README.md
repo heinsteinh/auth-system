@@ -13,7 +13,7 @@ This repo is a sandbox for picking up production patterns one at a time. Concret
 - **Observability** — Fastify's built-in logger, a `/health` endpoint that actually pings the DB so liveness/readiness probes mean something.
 - **Modern TypeScript ESM** — `"type": "module"` + `NodeNext` module resolution, explicit `.js` extensions in source imports, no transpiler tricks.
 - **Local infra parity** — Postgres, Redis, and MailHog wired up via `docker-compose` so the dev environment matches production shape.
-- **Frontend integration** *(coming)* — a small web client in `web/` to exercise the real auth flows end-to-end.
+- **Frontend integration** — a Vite + React + Tailwind v4 client in `frontend/` that exercises the real auth flows (login, register, refresh-on-401, role-gated admin).
 
 The point is to make the mistakes that real services make, in a small enough codebase that we can fix them properly.
 
@@ -38,13 +38,17 @@ The point is to make the mistakes that real services make, in a small enough cod
 auth-system/
 ├── api/                  # Fastify backend (this is where most of the action is)
 │   ├── prisma/           # schema.prisma + migrations
+│   ├── tests/            # vitest: unit, integration, e2e
 │   └── src/
 │       ├── config/       # env loading + validation
 │       ├── modules/      # feature slices (auth, users, ...)
 │       ├── plugins/      # Fastify plugins (prisma, jwt, rate-limit)
 │       ├── security/     # password hashing, token utils, route guards
 │       └── mail/         # transactional emails
-├── web/                  # frontend client (placeholder)
+├── frontend/             # Vite + React + TS client (Tailwind v4, react-router)
+│   └── src/
+│       ├── auth/         # AuthProvider, ProtectedRoute, axios client
+│       └── pages/        # Login, Register, Dashboards, Forgot/Reset password
 └── docker-compose.yml    # postgres + redis + mailhog
 ```
 
@@ -52,25 +56,82 @@ auth-system/
 
 Prereqs: Node 20+, pnpm 10, Docker.
 
+### 1. Bring up infrastructure (Postgres, Redis, MailHog)
+
 ```bash
-# 1. Bring up Postgres, Redis, MailHog
 docker compose up -d
-
-# 2. Configure the API
-cd api
-cp .env.example .env       # then fill in secrets, DATABASE_URL, etc.
-pnpm install
-
-# 3. Apply migrations + generate Prisma client
-pnpm prisma migrate dev
-pnpm prisma generate
-
-# 4. Run it
-pnpm dev                   # tsx watch
 ```
 
-Health check: `curl http://localhost:4000/health` — returns `{ status: "ok", db: "up" }` when Postgres is reachable, `503` otherwise.
-MailHog UI: http://localhost:8025
+### 2. Run the API
+
+```bash
+cd api
+cp .env.example .env       # then fill in secrets, DATABASE_URL, etc.
+                           # see "Generating JWT secrets" below
+pnpm install
+pnpm prisma migrate dev    # apply migrations
+pnpm prisma generate       # (re)generate the Prisma client
+pnpm dev                   # tsx watch — listens on http://localhost:4000
+```
+
+### 3. Run the frontend (in a second terminal)
+
+```bash
+cd frontend
+pnpm install
+pnpm dev                   # vite — listens on http://localhost:5173
+```
+
+The frontend reads `VITE_API_URL` from `frontend/.env` (defaults to `http://localhost:4000`). Make sure `FRONTEND_URL=http://localhost:5173` is set in `api/.env` so CORS lets it through.
+
+### 4. Tests
+
+```bash
+cd api
+pnpm test                  # full vitest suite (unit + integration + e2e)
+pnpm test:unit             # unit tests only — no DB
+pnpm test:integration      # integration tests — needs Postgres up
+pnpm test:e2e              # boots a real HTTP server
+pnpm test:coverage         # v8 coverage
+```
+
+The first run auto-creates the `auth_test` database and applies migrations.
+
+### Useful URLs
+
+- API: http://localhost:4000
+- Frontend: http://localhost:5173
+- MailHog UI: http://localhost:8025
+- Health check: `curl http://localhost:4000/health` → `{ status: "ok", db: "up" }`
+
+### Bootstrapping an admin
+
+The frontend's `/admin` route is gated to `role = ADMIN`. Newly registered users are `USER`. There are two paths to get an admin into the system:
+
+**Seed the first admin (recommended).** Set in `api/.env`:
+
+```
+ADMIN_EMAIL="you@example.com"
+ADMIN_PASSWORD="ChangeMeStrong123!"
+ADMIN_NAME="You"
+```
+
+Then from `api/`:
+
+```bash
+pnpm seed
+```
+
+This is idempotent — running it again updates the password for that email. The seeded user is created with `isEmailVerified = true` so you can log in immediately.
+
+**Promote others from the UI.** Once any admin is signed in, the **Admin** page (`/admin`) shows a `Promote` / `Demote` button next to each user. The endpoint is `PATCH /api/users/admin/users/:id` with `{ "role": "ADMIN" | "USER" }`. An admin cannot change their own role (server-side guard, so you can't accidentally lock yourself out from the UI).
+
+**Fallback (manual SQL).** If the seed step isn't an option:
+
+```bash
+docker compose exec postgres psql -U auth_user -d auth_db \
+  -c "UPDATE \"User\" SET role = 'ADMIN' WHERE email = 'you@example.com';"
+```
 
 ## Generating JWT secrets
 
