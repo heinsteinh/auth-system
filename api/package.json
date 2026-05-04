@@ -10,7 +10,13 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -36,8 +42,10 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "latest",
     "@types/nodemailer": "latest",
+    "@vitest/coverage-v8": "^4.1.5",
     "prisma": "latest",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "^4.1.5"
   }
 }

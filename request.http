@@ -1,0 +1,160 @@
+### Auth-system API — manual test scratchpad
+### Use with the VS Code "REST Client" extension (humao.rest-client).
+### Each `### name=...` block exports its response into variables you can
+### reference below as {{name.response.body.$.field}}.
+
+@host = http://localhost:4000
+@email = user@example.com
+@password = VeryStrongPassword123!
+
+# -------------------------------------------------------------------
+# 1. Health
+# -------------------------------------------------------------------
+### Health check (verifies API + DB connectivity)
+GET {{host}}/health
+
+
+# -------------------------------------------------------------------
+# 2. Register a new user
+# -------------------------------------------------------------------
+### Register
+# After this fires, open MailHog at http://localhost:8025
+# and click the verification link in the inbox.
+# @name register
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "name": "Test User"
+}
+
+
+# -------------------------------------------------------------------
+# 3. Verify email
+# -------------------------------------------------------------------
+### Verify email (paste token from the MailHog link)
+# The mailer sends a URL like:
+#   http://localhost:4000/api/auth/verify-email?token=<token>
+# Copy the token value here:
+@verifyToken = paste-token-from-mailhog-here
+
+GET {{host}}/api/auth/verify-email?token={{verifyToken}}
+
+
+# -------------------------------------------------------------------
+# 4. Login
+# -------------------------------------------------------------------
+### Login (rate limited: 5 / minute)
+# @name login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+###
+# Capture tokens from the login response above
+@accessToken = {{login.response.body.accessToken}}
+@refreshToken = {{login.response.body.refreshToken}}
+
+
+# -------------------------------------------------------------------
+# 5. Protected route — current user
+# -------------------------------------------------------------------
+### GET /api/users/me  (requires Bearer access token)
+GET {{host}}/api/users/me
+Authorization: Bearer {{accessToken}}
+
+
+# -------------------------------------------------------------------
+# 6. Refresh access token
+# -------------------------------------------------------------------
+### Rotate the access token using the refresh token
+# @name refresh
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+# After refresh, the old refresh token is revoked. Use the new pair:
+@accessToken2 = {{refresh.response.body.accessToken}}
+@refreshToken2 = {{refresh.response.body.refreshToken}}
+
+### Sanity check — call /me with the rotated access token
+GET {{host}}/api/users/me
+Authorization: Bearer {{accessToken2}}
+
+
+# -------------------------------------------------------------------
+# 7. Forgot password / reset password
+# -------------------------------------------------------------------
+### Request a password reset (always returns 200 — don't leak existence)
+POST {{host}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+###
+# Pull the reset token out of MailHog and paste it here:
+@resetToken = c2ea0d7a3bf70063d94afd0779c5e34bc9aec763fed6466caa75a731cebe40e6
+@newPassword = AnotherStrongPassword456!
+
+### Reset password
+POST {{host}}/api/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "password": "{{newPassword}}"
+}
+
+
+# -------------------------------------------------------------------
+# 8. Admin-only routes (requires a user with role = ADMIN)
+# -------------------------------------------------------------------
+### List all users (ADMIN only — expect 403 with a USER token)
+GET {{host}}/api/users/admin/users
+Authorization: Bearer {{accessToken}}
+
+### Delete a user by id (ADMIN only)
+DELETE {{host}}/api/users/admin/users/REPLACE_WITH_USER_ID
+Authorization: Bearer {{accessToken}}
+
+
+# -------------------------------------------------------------------
+# 9. Negative paths — useful to confirm the guards work
+# -------------------------------------------------------------------
+### Login with wrong password → 401
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "wrong-password"
+}
+
+### /me without a token → 401
+GET {{host}}/api/users/me
+
+### /me with a garbage token → 401
+GET {{host}}/api/users/me
+Authorization: Bearer not-a-real-jwt
+
+### Register the same email twice → 409
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "name": "Duplicate"
+}
