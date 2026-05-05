@@ -42,11 +42,9 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (refreshing) return refreshing;
 
   refreshing = axios
-    .post<{ accessToken: string }>(
-      `${API_URL}/api/auth/refresh`,
-      undefined,
-      { withCredentials: true },
-    )
+    .post<{ accessToken: string }>(`${API_URL}/api/auth/refresh`, undefined, {
+      withCredentials: true,
+    })
     .then(({ data }) => {
       tokenStore.set(data.accessToken);
       return data.accessToken;
@@ -100,9 +98,7 @@ export const authApi = {
     api.post<{ user: AuthUser }>('/api/auth/register', input).then((r) => r.data),
 
   login: (input: { email: string; password: string }) =>
-    api
-      .post<{ accessToken: string; user: AuthUser }>('/api/auth/login', input)
-      .then((r) => r.data),
+    api.post<{ accessToken: string; user: AuthUser }>('/api/auth/login', input).then((r) => r.data),
 
   logout: () => api.post('/api/auth/logout').then(() => undefined),
 

@@ -50,11 +50,7 @@ export function UserDashboard() {
             <Detail
               label="Email verified"
               value={
-                <span
-                  className={
-                    user.isEmailVerified ? 'text-green-700' : 'text-amber-700'
-                  }
-                >
+                <span className={user.isEmailVerified ? 'text-green-700' : 'text-amber-700'}>
                   {user.isEmailVerified ? 'Yes' : 'No'}
                 </span>
               }

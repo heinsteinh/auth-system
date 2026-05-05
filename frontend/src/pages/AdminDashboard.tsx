@@ -122,11 +122,7 @@ export function AdminDashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={
-                          u.isEmailVerified ? 'text-green-700' : 'text-amber-700'
-                        }
-                      >
+                      <span className={u.isEmailVerified ? 'text-green-700' : 'text-amber-700'}>
                         {u.isEmailVerified ? 'Yes' : 'No'}
                       </span>
                     </td>
