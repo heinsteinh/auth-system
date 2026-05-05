@@ -9,9 +9,7 @@ import {
 } from './auth.schemas.js';
 
 const loginRouteOptions =
-  env.NODE_ENV === 'test'
-    ? {}
-    : { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
+  env.NODE_ENV === 'test' ? {} : { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } };
 
 const REFRESH_COOKIE = 'refreshToken';
 

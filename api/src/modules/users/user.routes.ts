@@ -31,19 +31,15 @@ export async function userRoutes(app: FastifyInstance) {
     },
   );
 
-  app.patch(
-    '/admin/users/:id',
-    { preHandler: requireRole(Role.ADMIN) },
-    async (request, reply) => {
-      const params = request.params as { id: string };
-      const body = updateRoleSchema.parse(request.body);
+  app.patch('/admin/users/:id', { preHandler: requireRole(Role.ADMIN) }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = updateRoleSchema.parse(request.body);
 
-      if (params.id === request.user.sub) {
-        return reply.code(400).send({ message: 'You cannot change your own role' });
-      }
+    if (params.id === request.user.sub) {
+      return reply.code(400).send({ message: 'You cannot change your own role' });
+    }
 
-      const user = await userService.setRole(params.id, body.role);
-      return reply.send(user);
-    },
-  );
+    const user = await userService.setRole(params.id, body.role);
+    return reply.send(user);
+  });
 }
